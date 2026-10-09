@@ -1,9 +1,175 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8">
-  </head>
-  <body>
-    <h2>This is a sample Widget built using Zoho Extension toolkit.</h2>
-  </body>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Invoice Payment Report</title>
+<link rel="stylesheet" href="./style.css">
+
+<!-- Zoho Creator Widget SDK (v1 — required for ZOHO.CREATOR.init() and ZOHO.CREATOR.API.getAllRecords() used below) -->
+<script src="https://js.zohostatic.com/creator/widgets/version/1.0/widgetsdk-min.js"></script>
+
+<!-- Export libraries -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script> -->
+ <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+
+</head>
+<body>
+
+<div class="app">
+
+  <div class="header">
+    <div class="brand">
+      <img src="https://creatorapp.zohopublic.com.au/file//medielves/claims-management//All_Images/31559000000025010/Logo/image-download/PFxHZm68ZwuMKfkZz7yNOH7BZEes8UQN5ETOHD0bVY8Njqf0b9Zw5ZTe2XUK0CONRVfdmbQ9wteQdDnbWNCN4kVaeRZQhFrE6Tp5?filepath=/1774517256590556_Logo_design_with_green_leaf_accent.png"
+           alt="Medi Elves"
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="height: 80px;" />
+      <div class="brand-fallback">
+        <strong>Medi Elves</strong>
+        <span>KEEP IT SIMPLE</span>
+      </div>
+    </div>
+    <h1 style="font-size: 19px; font-weight: 800; ">Payment Report <br><span style="font-size: 12px; color: #2E6F8E;">Doctors . Payments</span></h1>
+  </div>
+
+  <div class="countbar" style="justify-content: space-between; align-items: center; gap: px; padding: 10px 26px;">
+    <div style="color: #2E6F8E; font-size: 15px; font-weight: 800;"></div>
+    <div class="count-badge">Showing <span id="recordCount">0</span> of <span id="totalCount">0</span> payments</div>
+  </div>
+
+  <div class="filterbar" id="filterBar">
+    <div class="field" >
+      <label for="doctorSearchInput">Doctor</label>
+      <div class="combo" id="doctorCombo">
+        <div class="field-input-wrap">
+          <button type="button" class="combo-control" id="doctorComboControl">
+            <span id="doctorComboLabel">All doctors</span>
+            <svg class="combo-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 9l6 6 6-6" stroke="#7C8B93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button type="button" class="field-clear" data-target="filterDoctor" title="Clear doctor filter">&times;</button>
+        </div>
+        <div class="combo-panel" id="doctorComboPanel">
+          <div class="combo-search-wrap">
+            <input type="text" id="doctorSearchInput" class="combo-search" placeholder="Search doctors..." autocomplete="off" />
+          </div>
+          <ul class="combo-list" id="doctorComboList"></ul>
+        </div>
+        <input type="hidden" id="filterDoctor" value="" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="paymentTypeSearchInput">Payment Type</label>
+      <div class="combo" id="paymentTypeCombo">
+        <div class="field-input-wrap">
+          <button type="button" class="combo-control" id="paymentTypeComboControl">
+            <span id="paymentTypeComboLabel">All payment types</span>
+            <svg class="combo-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6 9l6 6 6-6" stroke="#7C8B93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button type="button" class="field-clear" data-target="filterPaymentType" title="Clear payment type filter">&times;</button>
+        </div>
+        <div class="combo-panel" id="paymentTypeComboPanel">
+          <div class="combo-search-wrap">
+            <input type="text" id="paymentTypeSearchInput" class="combo-search" placeholder="Search payment types..." autocomplete="off" />
+          </div>
+          <ul class="combo-list" id="paymentTypeComboList"></ul>
+        </div>
+        <input type="hidden" id="filterPaymentType" value="" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="filterPaymentDate">Payment Date</label>
+      <div class="field-input-wrap">
+        <input type="date" id="filterPaymentDate" />
+        <button type="button" class="field-clear" data-target="filterPaymentDate" title="Clear date filter">&times;</button>
+      </div>
+    </div>
+
+    <div class="bar-actions">
+      <button type="button" class="btn btn-reset-all" id="resetAllBtn">&#8635; Reset All</button>
+    </div>
+  </div>
+
+  <div style="margin-left: 20px; margin-right: 20px; margin-bottom: 20px;">
+    <div class="table-toolbar">
+      <div class="search-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="11" cy="11" r="7" stroke="#7C8B93" stroke-width="2"/>
+          <path d="M21 21L16.65 16.65" stroke="#7C8B93" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <input type="text" id="searchInput" placeholder="Search payment no, doctor, invoice no..." />
+        <button type="button" class="field-clear" data-target="searchInput" title="Clear search">&times;</button>
+      </div>
+
+      <div class="toolbar-exports">
+        <button type="button" class="btn btn-export" id="exportExcelBtn" style="border: #24586F 1px solid;">&#8595; Export to Excel</button>
+        <button type="button" class="btn btn-export" id="exportPdfBtn" style="border: #24586F 1px solid;">&#8595; Export to PDF</button>
+      </div>
+    </div>
+
+    <div class="table-card" >
+      <div class="table-scroll">
+        <table id="reportTable">
+          <thead>
+            <tr>
+              <th>Payment No</th>
+              <th>Payment Date</th>
+              <th>Doctor</th>
+              <th>Invoice No</th>
+              <th>Payment Type</th>
+              <th class="num">Paying Amount</th>
+              <th class="num">Amount Adjusted</th>
+              <th class="num">Balance Amount</th>
+            </tr>
+          </thead>
+          <tbody id="reportBody">
+            <tr class="state-row"><td colspan="8"><span class="spinner"></span>&nbsp; Loading Doctor Payments....</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Grand Payment Summary — moved to the bottom, below the table -->
+    <div class="grand-summary" id="grandSummary">
+      <h2 class="grand-summary-title">Grand Summary</h2>
+      <div class="grand-summary-grid">
+        <div class="grand-summary-item">
+          <span class="gs-label">Total Payments</span>
+          <span class="gs-value" id="gsTotalPayments">0</span>
+        </div>
+        <div class="grand-summary-item">
+          <span class="gs-label">Doctors</span>
+          <span class="gs-value" id="gsDoctors">0</span>
+        </div>
+        <div class="grand-summary-item">
+          <span class="gs-label">Paying Amount</span>
+          <span class="gs-value" id="gsPayingAmount">0.00</span>
+        </div>
+        <div class="grand-summary-item">
+          <span class="gs-label">Amount Adjusted</span>
+          <span class="gs-value" id="gsAmountAdjusted">0.00</span>
+        </div>
+        <div class="grand-summary-item gs-emphasis">
+          <span class="gs-label">Balance Amount</span>
+          <span class="gs-value" id="gsBalanceAmount">0.00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="./script.js"></script>
+
+</body>
 </html>
