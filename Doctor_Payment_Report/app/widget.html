@@ -37,11 +37,6 @@
     <h1 style="font-size: 19px; font-weight: 800; ">Payment Report <br><span style="font-size: 12px; color: #2E6F8E;">Doctors . Payments</span></h1>
   </div>
 
-  <div class="countbar" style="justify-content: space-between; align-items: center; gap: px; padding: 10px 26px;">
-    <div style="color: #2E6F8E; font-size: 15px; font-weight: 800;"></div>
-    <div class="count-badge">Showing <span id="recordCount">0</span> of <span id="totalCount">0</span> payments</div>
-  </div>
-
   <div class="filterbar" id="filterBar">
     <div class="field" >
       <label for="doctorSearchInput">Doctor</label>
@@ -88,10 +83,18 @@
     </div>
 
     <div class="field">
-      <label for="filterPaymentDate">Payment Date</label>
+      <label for="filterFromDate">From Date</label>
       <div class="field-input-wrap">
-        <input type="date" id="filterPaymentDate" />
-        <button type="button" class="field-clear" data-target="filterPaymentDate" title="Clear date filter">&times;</button>
+        <input type="date" id="filterFromDate" />
+        <button type="button" class="field-clear" data-target="filterFromDate" title="Clear from date filter">&times;</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="filterToDate">To Date</label>
+      <div class="field-input-wrap">
+        <input type="date" id="filterToDate" />
+        <button type="button" class="field-clear" data-target="filterToDate" title="Clear to date filter">&times;</button>
       </div>
     </div>
 

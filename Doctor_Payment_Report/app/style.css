@@ -187,8 +187,8 @@
     display:flex;
     flex-direction:column;
     gap:6px;
-    min-width: 190px;
-    flex:1 1 190px;
+    min-width: 160px;
+    flex:1 1 160px;
   }
   .field label{
     font-size:11.5px;
@@ -564,12 +564,13 @@
     text-align:center;
     padding:40px 14px;
     color: var(--text-mute);
-    font-style:italic;
+    font-size:14px;
+    font-weight:600;
   }
   .state-row.error td{
-    color: var(--balance-due);
+    color: var(--text-mute);
     font-style:normal;
-    text-align:left;
+    text-align:center;
     white-space:normal;
   }
 
@@ -695,6 +696,7 @@
       width: 100%;
     }
     .filterbar .bar-actions{
+      grid-column: 1 / -1;
       margin-left:0;
       width:100%;
       align-self:end;

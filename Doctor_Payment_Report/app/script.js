@@ -126,10 +126,16 @@ function onDataReady() {
 }
 
 function showLoadError(message) {
+  console.error("Widget load error:", message);
   var body = document.getElementById("reportBody");
-  body.innerHTML = '<tr class="state-row error"><td colspan="8">' + message + '</td></tr>';
-  document.getElementById("recordCount").textContent = "0";
-  document.getElementById("totalCount").textContent = "0";
+  if (body) {
+    body.innerHTML = '<tr class="state-row"><td colspan="8">No Data</td></tr>';
+  }
+  var recCount = document.getElementById("recordCount");
+  if (recCount) recCount.textContent = "0";
+  var totalCount = document.getElementById("totalCount");
+  if (totalCount) totalCount.textContent = "0";
+  renderGrandSummary([]);
 }
 
 /* ==========================================================================
@@ -280,36 +286,41 @@ function togglePaymentTypeCombo() {
 function applyFilters() {
   var doctor = document.getElementById("filterDoctor").value;
   var payType = document.getElementById("filterPaymentType").value;
-  var payDate = document.getElementById("filterPaymentDate").value;
+  var fromDate = document.getElementById("filterFromDate") ? document.getElementById("filterFromDate").value : "";
+  var toDate = document.getElementById("filterToDate") ? document.getElementById("filterToDate").value : "";
   var search = document.getElementById("searchInput").value.trim().toLowerCase();
   var f = CONFIG.fields;
 
   visibleRecords = allRecords.filter(function (r) {
     var matchDoctor = !doctor || getFieldDisplay(r[f.doctor]) === doctor;
     var matchType = !payType || getFieldDisplay(r[f.paymentType]) === payType;
-    var matchDate = !payDate || normaliseDate(r[f.paymentDate]) === payDate;
+    var recDate = normaliseDate(r[f.paymentDate]);
+    var matchFromDate = !fromDate || (recDate && recDate >= fromDate);
+    var matchToDate = !toDate || (recDate && recDate <= toDate);
     var matchSearch = !search || [
       r[f.paymentNo], r[f.doctor], r[f.invoiceNo], r[f.paymentType]
     ].some(function (v) { return String(safe(v)).toLowerCase().indexOf(search) > -1; });
-    return matchDoctor && matchType && matchDate && matchSearch;
+    return matchDoctor && matchType && matchFromDate && matchToDate && matchSearch;
   });
 
   renderTable(visibleRecords);
-  updateResetButtonState(doctor, payType, payDate, search);
-  updateClearButtonsVisibility(doctor, payType, payDate, search);
+  updateResetButtonState(doctor, payType, fromDate, toDate, search);
+  updateClearButtonsVisibility(doctor, payType, fromDate, toDate, search);
 }
 
-function updateResetButtonState(doctor, payType, payDate, search) {
+function updateResetButtonState(doctor, payType, fromDate, toDate, search) {
   var btn = document.getElementById("resetAllBtn");
-  var active = !!(doctor || payType || payDate || search);
+  if (!btn) return;
+  var active = !!(doctor || payType || fromDate || toDate || search);
   btn.classList.toggle("active", active);
   btn.disabled = !active;
 }
 
-function updateClearButtonsVisibility(doctor, payType, payDate, search) {
+function updateClearButtonsVisibility(doctor, payType, fromDate, toDate, search) {
   toggleClearButton("filterDoctor", !!doctor);
   toggleClearButton("filterPaymentType", !!payType);
-  toggleClearButton("filterPaymentDate", !!payDate);
+  toggleClearButton("filterFromDate", !!fromDate);
+  toggleClearButton("filterToDate", !!toDate);
   toggleClearButton("searchInput", !!search);
 }
 
@@ -320,11 +331,41 @@ function toggleClearButton(targetId, show) {
 
 function normaliseDate(value) {
   if (!value) return "";
-  var d = new Date(value);
-  if (isNaN(d.getTime())) return String(value);
-  var mm = String(d.getMonth() + 1).padStart(2, "0");
-  var dd = String(d.getDate()).padStart(2, "0");
-  return d.getFullYear() + "-" + mm + "-" + dd;
+  var str = String(value).trim();
+
+  // YYYY-MM-DD or starts with YYYY-MM-DD
+  var isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return isoMatch[1] + "-" + isoMatch[2] + "-" + isoMatch[3];
+  }
+
+  // DD-MMM-YYYY or DD/MMM/YYYY or DD MMM YYYY (e.g. 09-Oct-2026)
+  var mmmMatch = str.match(/^(\d{1,2})[-/ ]([A-Za-z]{3})[-/ ](\d{4})/);
+  if (mmmMatch) {
+    var monthMap = {
+      jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+      jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12"
+    };
+    var m = monthMap[mmmMatch[2].toLowerCase()];
+    if (m) {
+      var d = String(mmmMatch[1]).padStart(2, "0");
+      return mmmMatch[3] + "-" + m + "-" + d;
+    }
+  }
+
+  // DD-MM-YYYY or DD/MM/YYYY (e.g. 09/10/2026)
+  var dmyMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmyMatch) {
+    var dd = String(dmyMatch[1]).padStart(2, "0");
+    var mm = String(dmyMatch[2]).padStart(2, "0");
+    return dmyMatch[3] + "-" + mm + "-" + dd;
+  }
+
+  var d = new Date(str);
+  if (isNaN(d.getTime())) return str;
+  var mPad = String(d.getMonth() + 1).padStart(2, "0");
+  var dPad = String(d.getDate()).padStart(2, "0");
+  return d.getFullYear() + "-" + mPad + "-" + dPad;
 }
 
 function clearSingleFilter(targetId) {
@@ -337,7 +378,15 @@ function clearSingleFilter(targetId) {
     return;
   }
   var el = document.getElementById(targetId);
-  el.value = "";
+  if (el) el.value = "";
+  if (targetId === "filterFromDate") {
+    var toEl = document.getElementById("filterToDate");
+    if (toEl) toEl.min = "";
+  }
+  if (targetId === "filterToDate") {
+    var fromEl = document.getElementById("filterFromDate");
+    if (fromEl) fromEl.max = "";
+  }
   applyFilters();
 }
 
@@ -348,7 +397,10 @@ function resetAllFilters() {
   paymentTypeSelected = "";
   document.getElementById("filterPaymentType").value = "";
   document.getElementById("paymentTypeComboLabel").textContent = "All payment types";
-  document.getElementById("filterPaymentDate").value = "";
+  var fromEl = document.getElementById("filterFromDate");
+  if (fromEl) { fromEl.value = ""; fromEl.max = ""; }
+  var toEl = document.getElementById("filterToDate");
+  if (toEl) { toEl.value = ""; toEl.min = ""; }
   document.getElementById("searchInput").value = "";
   applyFilters();
 }
@@ -360,11 +412,13 @@ function renderTable(records) {
   var body = document.getElementById("reportBody");
   body.innerHTML = "";
 
-  document.getElementById("recordCount").textContent = records.length;
-  document.getElementById("totalCount").textContent = allRecords.length;
+  var recCountEl = document.getElementById("recordCount");
+  if (recCountEl) recCountEl.textContent = records.length;
+  var totalCountEl = document.getElementById("totalCount");
+  if (totalCountEl) totalCountEl.textContent = allRecords.length;
 
   if (records.length === 0) {
-    body.innerHTML = '<tr class="state-row"><td colspan="8">No payments match the selected filters.</td></tr>';
+    body.innerHTML = '<tr class="state-row"><td colspan="8">No Data</td></tr>';
     renderGrandSummary([]);
     return;
   }
@@ -489,16 +543,24 @@ function exportExcel() {
   var rows = getExportRows();
   if (rows.length === 0) { alert("There is no data to export."); return; }
 
-  var doctor  = document.getElementById("filterDoctor").value;
-  var payType = document.getElementById("filterPaymentType").value;
-  var payDate = document.getElementById("filterPaymentDate").value;
+  var doctor   = document.getElementById("filterDoctor").value;
+  var payType  = document.getElementById("filterPaymentType").value;
+  var fromDate = document.getElementById("filterFromDate") ? document.getElementById("filterFromDate").value : "";
+  var toDate   = document.getElementById("filterToDate") ? document.getElementById("filterToDate").value : "";
 
   var hospitalEl = document.getElementById("filterHospital");
   var hospital = hospitalEl ? hospitalEl.value : "";
 
-  var doctorName   = doctor || "All Doctors";
-  var hospitalName = payType || "All ";
-  var reportPeriod = (payDate ? formatDisplayDate(payDate) : "All Dates");
+  var doctorName      = doctor || "All Doctors";
+  var paymentTypeName = payType || "All Payment Types";
+  var reportPeriod    = "All Dates";
+  if (fromDate && toDate) {
+    reportPeriod = formatDisplayDate(fromDate) + " to " + formatDisplayDate(toDate);
+  } else if (fromDate) {
+    reportPeriod = "From " + formatDisplayDate(fromDate);
+  } else if (toDate) {
+    reportPeriod = "Up to " + formatDisplayDate(toDate);
+  }
   var generatedOn  = new Date().toLocaleString("en-AU", {
     day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit"
   });
@@ -525,8 +587,8 @@ function exportExcel() {
   var aoa = [];
   aoa[TITLE_ROW]  = ["Payment Report"].concat(new Array(COL_COUNT - 1).fill(""));
   aoa[1]          = new Array(COL_COUNT).fill("");
-  aoa[LABEL_ROW]  = ["DOCTOR", "", "PAYMENT TYPE", "", "PAYMENT DATE", "", "GENERATED ON", ""];
-  aoa[VALUE_ROW]  = [doctorName, "", hospitalName, "", reportPeriod, "", generatedOn, ""];
+  aoa[LABEL_ROW]  = ["DOCTOR", "", "PAYMENT TYPE", "", "DATE RANGE", "", "GENERATED ON", ""];
+  aoa[VALUE_ROW]  = [doctorName, "", paymentTypeName, "", reportPeriod, "", generatedOn, ""];
   aoa[4]          = new Array(COL_COUNT).fill("");
   aoa[HEADER_ROW] = TABLE_HEADERS;
 
@@ -894,7 +956,7 @@ function drawPdfHeader(doc, pageWidth, meta) {
   }
   cols.push(
     { label: "PAYMENT TYPE", value: meta.paymentType, icon: drawCardIcon },
-    { label: "PAYMENT DATE", value: meta.paymentDate, icon: drawCalendarIcon },
+    { label: "DATE RANGE",   value: meta.paymentDate, icon: drawCalendarIcon },
     { label: "GENERATED ON", value: meta.generatedOn, icon: drawClockIcon }
   );
 
@@ -1019,19 +1081,29 @@ function exportPdf() {
   var rows = getExportRows();
   if (rows.length === 0) { alert("There is no data to export."); return; }
 
-  var doctor = document.getElementById("filterDoctor").value;
-  var payType = document.getElementById("filterPaymentType").value;
-  var payDate = document.getElementById("filterPaymentDate").value;
+  var doctor   = document.getElementById("filterDoctor").value;
+  var payType  = document.getElementById("filterPaymentType").value;
+  var fromDate = document.getElementById("filterFromDate") ? document.getElementById("filterFromDate").value : "";
+  var toDate   = document.getElementById("filterToDate") ? document.getElementById("filterToDate").value : "";
 
   var hospitalEl = document.getElementById("filterHospital");
   var hospital = hospitalEl ? hospitalEl.value : "";
+
+  var reportPeriod = "All Dates";
+  if (fromDate && toDate) {
+    reportPeriod = formatDisplayDate(fromDate) + " to " + formatDisplayDate(toDate);
+  } else if (fromDate) {
+    reportPeriod = "From " + formatDisplayDate(fromDate);
+  } else if (toDate) {
+    reportPeriod = "Up to " + formatDisplayDate(toDate);
+  }
 
   var meta = {
     reportTitle: BRANDING.reportTitle,
     doctor: doctor || "All Doctors",
     hospital: hospital || null,
     paymentType: payType || "All Payment Types",
-    paymentDate: payDate ? formatDisplayDate(payDate) : "All Dates",
+    paymentDate: reportPeriod,
     generatedOn: new Date().toLocaleString("en-IN", {
       day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true
     })
@@ -1133,7 +1205,24 @@ function bindEvents() {
     }
   });
 
-  document.getElementById("filterPaymentDate").addEventListener("change", applyFilters);
+  var fromDateInput = document.getElementById("filterFromDate");
+  if (fromDateInput) {
+    fromDateInput.addEventListener("change", function () {
+      var toDateInput = document.getElementById("filterToDate");
+      if (toDateInput) toDateInput.min = this.value;
+      applyFilters();
+    });
+  }
+
+  var toDateInput = document.getElementById("filterToDate");
+  if (toDateInput) {
+    toDateInput.addEventListener("change", function () {
+      var fromDateInput = document.getElementById("filterFromDate");
+      if (fromDateInput) fromDateInput.max = this.value;
+      applyFilters();
+    });
+  }
+
   document.getElementById("searchInput").addEventListener("input", applyFilters);
 
   document.querySelectorAll(".field-clear").forEach(function (btn) {
@@ -1147,6 +1236,6 @@ function bindEvents() {
   document.getElementById("exportPdfBtn").addEventListener("click", exportPdf);
   document.getElementById("exportExcelBtn").addEventListener("click", exportExcel);
 
-  updateResetButtonState("", "", "", "");
-  updateClearButtonsVisibility("", "", "", "");
+  updateResetButtonState("", "", "", "", "");
+  updateClearButtonsVisibility("", "", "", "", "");
 }
