@@ -1,178 +1,204 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Invoice Payment Report</title>
+<meta charset="UTF-8">
+<title>Receipted Payments</title>
+
+<!-- Zoho Creator Widget SDK — JS API v2 (this widget uses ZOHO.CREATOR.DATA.getRecords) -->
+<script src="https://static.zohocdn.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
 <link rel="stylesheet" href="./style.css">
-
-<!-- Zoho Creator Widget SDK (v1 — required for ZOHO.CREATOR.init() and ZOHO.CREATOR.API.getAllRecords() used below) -->
-<script src="https://js.zohostatic.com/creator/widgets/version/1.0/widgetsdk-min.js"></script>
-
-<!-- Export libraries -->
-<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script> -->
- <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-
 </head>
-<body>
 
-<div class="app">
+<body>
+<div class="rp-wrap">
 
   <div class="header">
     <div class="brand">
       <img src="https://creatorapp.zohopublic.com.au/file//medielves/claims-management//All_Images/31559000000025010/Logo/image-download/PFxHZm68ZwuMKfkZz7yNOH7BZEes8UQN5ETOHD0bVY8Njqf0b9Zw5ZTe2XUK0CONRVfdmbQ9wteQdDnbWNCN4kVaeRZQhFrE6Tp5?filepath=/1774517256590556_Logo_design_with_green_leaf_accent.png"
            alt="Medi Elves"
-           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" style="height: 80px;" />
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
       <div class="brand-fallback">
         <strong>Medi Elves</strong>
         <span>KEEP IT SIMPLE</span>
       </div>
     </div>
-    <h1 style="font-size: 19px; font-weight: 800; ">Payment Report <br><span style="font-size: 12px; color: #2E6F8E;">Doctors . Payments</span></h1>
+    <h1>Receipted Payments<span class="rp-h1-sub">Claims · Payments</span></h1>
+
   </div>
 
-  <div class="filterbar" id="filterBar">
-    <div class="field" >
-      <label for="doctorSearchInput">Doctor</label>
-      <div class="combo" id="doctorCombo">
-        <div class="field-input-wrap">
-          <button type="button" class="combo-control" id="doctorComboControl">
-            <span id="doctorComboLabel">All doctors</span>
-            <svg class="combo-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M6 9l6 6 6-6" stroke="#7C8B93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+  <!-- ===================== FILTER CARD ===================== -->
+  <div class="rp-filters" style="margin-left: 20px; margin-right: 20px;">
+    <div class="rp-filters-grid">
+
+      <!-- Searchable combo filter: Doctor -->
+      
+      <div class="rp-field" id="fld-doctor">
+        <label for="rpDoctor">Doctor</label>
+        <div class="rp-input-row">
+          <input type="text" id="rpDoctor" value="" placeholder="Loading…" readonly disabled>
+        </div>
+      </div>
+
+      <!-- Searchable combo filter: Hospital -->
+      <div class="rp-field" id="fld-hospital">
+        <label id="rpHospitalLbl">Hospital</label>
+        <div class="rp-combo" id="rpHospitalCombo">
+          <input type="hidden" id="rpHospital" data-label="rpHospitalLabel" data-placeholder="All Hospitals">
+          <button type="button" class="rp-combo-btn" id="rpHospitalBtn" aria-haspopup="listbox">
+            <span id="rpHospitalLabel">All Hospitals</span>
           </button>
-          <button type="button" class="field-clear" data-target="filterDoctor" title="Clear doctor filter">&times;</button>
-        </div>
-        <div class="combo-panel" id="doctorComboPanel">
-          <div class="combo-search-wrap">
-            <input type="text" id="doctorSearchInput" class="combo-search" placeholder="Search doctors..." autocomplete="off" />
+          <svg class="rp-combo-caret" viewBox="0 0 24 24" fill="none" stroke="#4c6072" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <button type="button" class="rp-clear-one" data-target="rpHospital" title="Clear">&times;</button>
+          <div class="rp-combo-panel" id="rpHospitalPanel">
+            <input type="text" class="rp-combo-search" id="rpHospitalSearch" placeholder="Search hospitals…" autocomplete="off">
+            <div class="rp-combo-list" id="rpHospitalList"></div>
           </div>
-          <ul class="combo-list" id="doctorComboList"></ul>
         </div>
-        <input type="hidden" id="filterDoctor" value="" />
       </div>
-    </div>
 
-    <div class="field">
-      <label for="paymentTypeSearchInput">Payment Type</label>
-      <div class="combo" id="paymentTypeCombo">
-        <div class="field-input-wrap">
-          <button type="button" class="combo-control" id="paymentTypeComboControl">
-            <span id="paymentTypeComboLabel">All payment types</span>
-            <svg class="combo-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M6 9l6 6 6-6" stroke="#7C8B93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
+      <!-- Searchable combo filter: Payer Name -->
+      <div class="rp-field" id="fld-payer">
+        <label id="rpPayerLbl">Payer Name</label>
+        <div class="rp-combo" id="rpPayerCombo">
+          <input type="hidden" id="rpPayer" data-label="rpPayerLabel" data-placeholder="All Payers">
+          <button type="button" class="rp-combo-btn" id="rpPayerBtn" aria-haspopup="listbox">
+            <span id="rpPayerLabel">All Payers</span>
           </button>
-          <button type="button" class="field-clear" data-target="filterPaymentType" title="Clear payment type filter">&times;</button>
-        </div>
-        <div class="combo-panel" id="paymentTypeComboPanel">
-          <div class="combo-search-wrap">
-            <input type="text" id="paymentTypeSearchInput" class="combo-search" placeholder="Search payment types..." autocomplete="off" />
+          <svg class="rp-combo-caret" viewBox="0 0 24 24" fill="none" stroke="#4c6072" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <button type="button" class="rp-clear-one" data-target="rpPayer" title="Clear">&times;</button>
+          <div class="rp-combo-panel" id="rpPayerPanel">
+            <input type="text" class="rp-combo-search" id="rpPayerSearch" placeholder="Search payers…" autocomplete="off">
+            <div class="rp-combo-list" id="rpPayerList"></div>
           </div>
-          <ul class="combo-list" id="paymentTypeComboList"></ul>
         </div>
-        <input type="hidden" id="filterPaymentType" value="" />
       </div>
+
+      <!-- Searchable combo filter: Patient Name -->
+      <div class="rp-field" id="fld-patient">
+        <label id="rpPatientLbl">Patient Name</label>
+        <div class="rp-combo" id="rpPatientCombo">
+          <input type="hidden" id="rpPatient" data-label="rpPatientLabel" data-placeholder="All Patients">
+          <button type="button" class="rp-combo-btn" id="rpPatientBtn" aria-haspopup="listbox">
+            <span id="rpPatientLabel">All Patients</span>
+          </button>
+          <svg class="rp-combo-caret" viewBox="0 0 24 24" fill="none" stroke="#4c6072" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <button type="button" class="rp-clear-one" data-target="rpPatient" title="Clear">&times;</button>
+          <div class="rp-combo-panel" id="rpPatientPanel">
+            <input type="text" class="rp-combo-search" id="rpPatientSearch" placeholder="Search patients…" autocomplete="off">
+            <div class="rp-combo-list" id="rpPatientList"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment Method — plain, normal-colored dropdown -->
+      <div class="rp-field" id="fld-method">
+        <label for="rpMethod">Payment Method</label>
+        <div class="rp-input-row">
+          <select id="rpMethod"><option value="">All methods</option></select>
+          <button type="button" class="rp-clear-one" data-target="rpMethod" title="Clear">&times;</button>
+        </div>
+      </div>
+
+      <div class="rp-field" id="fld-from-date">
+        <label for="rpFromDate">From Date</label>
+        <div class="rp-input-row">
+          <input type="date" id="rpFromDate">
+          <button type="button" class="rp-clear-one" data-target="rpFromDate" title="Clear">&times;</button>
+        </div>
+      </div>
+
+      <div class="rp-field" id="fld-to-date">
+        <label for="rpToDate">To Date</label>
+        <div class="rp-input-row">
+          <input type="date" id="rpToDate">
+          <button type="button" class="rp-clear-one" data-target="rpToDate" title="Clear">&times;</button>
+        </div>
+      </div>
+
     </div>
 
-    <div class="field">
-      <label for="filterFromDate">From Date</label>
-      <div class="field-input-wrap">
-        <input type="date" id="filterFromDate" />
-        <button type="button" class="field-clear" data-target="filterFromDate" title="Clear from date filter">&times;</button>
-      </div>
-    </div>
-
-    <div class="field">
-      <label for="filterToDate">To Date</label>
-      <div class="field-input-wrap">
-        <input type="date" id="filterToDate" />
-        <button type="button" class="field-clear" data-target="filterToDate" title="Clear to date filter">&times;</button>
-      </div>
-    </div>
-
-    <div class="bar-actions">
-      <button type="button" class="btn btn-reset-all" id="resetAllBtn">&#8635; Reset All</button>
+    <div class="rp-filters-actions">
+      <button class="rp-btn rp-btn-ghost" id="rpResetAll">Reset All</button>
+      <button class="rp-btn rp-btn-primary" id="rpApply">Apply Filter</button>
     </div>
   </div>
 
-  <div style="margin-left: 20px; margin-right: 20px; margin-bottom: 20px;">
-    <div class="table-toolbar">
-      <div class="search-wrap">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="11" cy="11" r="7" stroke="#7C8B93" stroke-width="2"/>
-          <path d="M21 21L16.65 16.65" stroke="#7C8B93" stroke-width="2" stroke-linecap="round"/>
-        </svg>
-        <input type="text" id="searchInput" placeholder="Search payment no, doctor, invoice no..." />
-        <button type="button" class="field-clear" data-target="searchInput" title="Clear search">&times;</button>
-      </div>
-
-      <div class="toolbar-exports">
-        <button type="button" class="btn btn-export" id="exportExcelBtn" style="border: #24586F 1px solid;">&#8595; Export to Excel</button>
-        <button type="button" class="btn btn-export" id="exportPdfBtn" style="border: #24586F 1px solid;">&#8595; Export to PDF</button>
-      </div>
+  <!-- ===================== TABLE TOOLBAR ===================== -->
+<div style="margin-left: 20px; margin-right: 20px;">
+  <div class="rp-toolbar">
+    <div class="rp-count"></div>
+    <div class="rp-export-group">
+      <div class="rp-count" id="rpCount" style="display: none;">Loading records…</div>
+      <button class="rp-btn rp-btn-outline" id="rpExportExcel">⬇ Export to Excel</button>
+      <button class="rp-btn rp-btn-outline" id="rpExportPdf">⬇ Export to PDF</button>
     </div>
+  </div>
 
-    <div class="table-card" >
-      <div class="table-scroll">
-        <table id="reportTable">
-          <thead>
-            <tr>
-              <th>Payment No</th>
-              <th>Payment Date</th>
-              <th>Doctor</th>
-              <th>Invoice No</th>
-              <th>Payment Type</th>
-              <th class="num">Paying Amount</th>
-              <th class="num">Amount Adjusted</th>
-              <th class="num">Balance Amount</th>
-            </tr>
-          </thead>
-          <tbody id="reportBody">
-            <tr class="state-row"><td colspan="8"><span class="spinner"></span>&nbsp; Loading Doctor Payments....</td></tr>
-          </tbody>
-        </table>
-      </div>
+  <!-- ===================== TABLE ===================== -->
+  <div class="rp-table-card">
+    <div class="rp-table-scroll">
+      <table class="rp-table" id="rpTable">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="rpSelectAll" title="Select all visible claims"></th>
+            <th>Payment ID</th>
+            <th>Payment Date</th>
+            <th>Payment Method</th>
+            <th>Doctor</th>
+            <th>Hospital</th>
+            <th>Patient</th>
+            <th>Date of Service</th>
+            <th>Item Code</th>
+            <th>Paid Amount</th>
+            <th>Adjustment Amount</th>
+            <th>Balance Due</th>
+          </tr>
+        </thead>
+        <tbody id="rpTbody">
+          <tr><td colspan="12"><div class="rp-loading"><span class="rp-spinner"></span>Fetching Add_Payment_Report…</div></td></tr>
+        </tbody>
+      </table>
     </div>
+  </div>
 
-    <!-- Grand Payment Summary — moved to the bottom, below the table -->
-    <div class="grand-summary" id="grandSummary">
-      <h2 class="grand-summary-title">Grand Summary</h2>
-      <div class="grand-summary-grid">
-        <div class="grand-summary-item">
-          <span class="gs-label">Total Payments</span>
-          <span class="gs-value" id="gsTotalPayments">0</span>
+  <div class="rp-count" id="rpFilteredCount" style="margin-top:10px; display:none;" >Showing 0 of 0 payments</div>
+
+  <!-- ===================== GRAND SUMMARY CARD ===================== -->
+  <div style="margin-top: 16px;">
+    <div class="rp-grand-summary-card" id="rpGrandSummaryCard">
+      <div class="rp-grand-summary-title">Grand Summary</div>
+      <div class="rp-grand-summary-grid">
+        <div class="rp-grand-summary-item">
+          <span class="rp-gs-label">Payments</span>
+          <span class="rp-gs-value" id="rpGsPayments">0</span>
         </div>
-        <div class="grand-summary-item">
-          <span class="gs-label">Doctors</span>
-          <span class="gs-value" id="gsDoctors">0</span>
+        <div class="rp-grand-summary-item">
+          <span class="rp-gs-label">Doctors</span>
+          <span class="rp-gs-value" id="rpGsDoctors">0</span>
         </div>
-        <div class="grand-summary-item">
-          <span class="gs-label">Paying Amount</span>
-          <span class="gs-value" id="gsPayingAmount">0.00</span>
+        <div class="rp-grand-summary-item">
+          <span class="rp-gs-label">Hospitals</span>
+          <span class="rp-gs-value" id="rpGsHospitals">0</span>
         </div>
-        <div class="grand-summary-item">
-          <span class="gs-label">Amount Adjusted</span>
-          <span class="gs-value" id="gsAmountAdjusted">0.00</span>
+        <div class="rp-grand-summary-item">
+          <span class="rp-gs-label">Paid Amount</span>
+          <span class="rp-gs-value rp-gs-amount" id="rpGsPaid">$0.00</span>
         </div>
-        <div class="grand-summary-item gs-emphasis">
-          <span class="gs-label">Balance Amount</span>
-          <span class="gs-value" id="gsBalanceAmount">0.00</span>
+        <div class="rp-grand-summary-item">
+          <span class="rp-gs-label">Adjustment Amount</span>
+          <span class="rp-gs-value rp-gs-amount" id="rpGsAdjustment">$0.00</span>
+        </div>
+        <div class="rp-grand-summary-item">
+          <span class="rp-gs-label">Balance Due</span>
+          <span class="rp-gs-value rp-gs-balance" id="rpGsBalance">$0.00</span>
         </div>
       </div>
     </div>
   </div>
-
 </div>
 
+</div>
+</body>
 <script src="./script.js"></script>
-
 </body>
 </html>
