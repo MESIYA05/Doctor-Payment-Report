@@ -1,204 +1,236 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Receipted Payments</title>
 
-<!-- Zoho Creator Widget SDK — JS API v2 (this widget uses ZOHO.CREATOR.DATA.getRecords) -->
-<script src="https://static.zohocdn.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
-<link rel="stylesheet" href="./style.css">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Settlements</title>
+  <link rel="stylesheet" href="./style.css">
+  <!-- Zoho Creator SDK -->
+  <script src="https://js.zohostatic.com/creator/widgets/version/2.0/widgetsdk-min.js"></script>
+  <!-- Excel Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- PDF Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 </head>
 
 <body>
-<div class="rp-wrap">
 
-  <div class="header">
-    <div class="brand">
-      <img src="https://creatorapp.zohopublic.com.au/file//medielves/claims-management//All_Images/31559000000025010/Logo/image-download/PFxHZm68ZwuMKfkZz7yNOH7BZEes8UQN5ETOHD0bVY8Njqf0b9Zw5ZTe2XUK0CONRVfdmbQ9wteQdDnbWNCN4kVaeRZQhFrE6Tp5?filepath=/1774517256590556_Logo_design_with_green_leaf_accent.png"
-           alt="Medi Elves"
-           onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-      <div class="brand-fallback">
-        <strong>Medi Elves</strong>
-        <span>KEEP IT SIMPLE</span>
+<!-- LOADING OVERLAY -->
+<div id="fxLoader" class="fx-loader is-active" role="status" aria-live="polite">
+  <div class="fx-backdrop-ambient"></div>
+  <div class="fx-card">
+    <div class="fx-brand-circle">
+      <div class="fx-pulse-wave wave-1"></div>
+      <div class="fx-pulse-wave wave-2"></div>
+      <div class="fx-pulse-wave wave-3"></div>
+      <div class="fx-orbit-ring"></div>
+      <div class="fx-logo-box">
+        <img
+          src="https://creatorapp.zohopublic.com.au/file//medielves/claims-management//All_Images/31559000000025010/Logo/image-download/PFxHZm68ZwuMKfkZz7yNOH7BZEes8UQN5ETOHD0bVY8Njqf0b9Zw5ZTe2XUK0CONRVfdmbQ9wteQdDnbWNCN4kVaeRZQhFrE6Tp5?filepath=/1774517256590556_Logo_design_with_green_leaf_accent.png"
+          alt="Medi Elves">
       </div>
     </div>
-    <h1>Receipted Payments<span class="rp-h1-sub">Claims · Payments</span></h1>
-
-  </div>
-
-  <!-- ===================== FILTER CARD ===================== -->
-  <div class="rp-filters" style="margin-left: 20px; margin-right: 20px;">
-    <div class="rp-filters-grid">
-
-      <!-- Searchable combo filter: Doctor -->
-      
-      <div class="rp-field" id="fld-doctor">
-        <label for="rpDoctor">Doctor</label>
-        <div class="rp-input-row">
-          <input type="text" id="rpDoctor" value="" placeholder="Loading…" readonly disabled>
-        </div>
-      </div>
-
-      <!-- Searchable combo filter: Hospital -->
-      <div class="rp-field" id="fld-hospital">
-        <label id="rpHospitalLbl">Hospital</label>
-        <div class="rp-combo" id="rpHospitalCombo">
-          <input type="hidden" id="rpHospital" data-label="rpHospitalLabel" data-placeholder="All Hospitals">
-          <button type="button" class="rp-combo-btn" id="rpHospitalBtn" aria-haspopup="listbox">
-            <span id="rpHospitalLabel">All Hospitals</span>
-          </button>
-          <svg class="rp-combo-caret" viewBox="0 0 24 24" fill="none" stroke="#4c6072" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          <button type="button" class="rp-clear-one" data-target="rpHospital" title="Clear">&times;</button>
-          <div class="rp-combo-panel" id="rpHospitalPanel">
-            <input type="text" class="rp-combo-search" id="rpHospitalSearch" placeholder="Search hospitals…" autocomplete="off">
-            <div class="rp-combo-list" id="rpHospitalList"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Searchable combo filter: Payer Name -->
-      <div class="rp-field" id="fld-payer">
-        <label id="rpPayerLbl">Payer Name</label>
-        <div class="rp-combo" id="rpPayerCombo">
-          <input type="hidden" id="rpPayer" data-label="rpPayerLabel" data-placeholder="All Payers">
-          <button type="button" class="rp-combo-btn" id="rpPayerBtn" aria-haspopup="listbox">
-            <span id="rpPayerLabel">All Payers</span>
-          </button>
-          <svg class="rp-combo-caret" viewBox="0 0 24 24" fill="none" stroke="#4c6072" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          <button type="button" class="rp-clear-one" data-target="rpPayer" title="Clear">&times;</button>
-          <div class="rp-combo-panel" id="rpPayerPanel">
-            <input type="text" class="rp-combo-search" id="rpPayerSearch" placeholder="Search payers…" autocomplete="off">
-            <div class="rp-combo-list" id="rpPayerList"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Searchable combo filter: Patient Name -->
-      <div class="rp-field" id="fld-patient">
-        <label id="rpPatientLbl">Patient Name</label>
-        <div class="rp-combo" id="rpPatientCombo">
-          <input type="hidden" id="rpPatient" data-label="rpPatientLabel" data-placeholder="All Patients">
-          <button type="button" class="rp-combo-btn" id="rpPatientBtn" aria-haspopup="listbox">
-            <span id="rpPatientLabel">All Patients</span>
-          </button>
-          <svg class="rp-combo-caret" viewBox="0 0 24 24" fill="none" stroke="#4c6072" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          <button type="button" class="rp-clear-one" data-target="rpPatient" title="Clear">&times;</button>
-          <div class="rp-combo-panel" id="rpPatientPanel">
-            <input type="text" class="rp-combo-search" id="rpPatientSearch" placeholder="Search patients…" autocomplete="off">
-            <div class="rp-combo-list" id="rpPatientList"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Payment Method — plain, normal-colored dropdown -->
-      <div class="rp-field" id="fld-method">
-        <label for="rpMethod">Payment Method</label>
-        <div class="rp-input-row">
-          <select id="rpMethod"><option value="">All methods</option></select>
-          <button type="button" class="rp-clear-one" data-target="rpMethod" title="Clear">&times;</button>
-        </div>
-      </div>
-
-      <div class="rp-field" id="fld-from-date">
-        <label for="rpFromDate">From Date</label>
-        <div class="rp-input-row">
-          <input type="date" id="rpFromDate">
-          <button type="button" class="rp-clear-one" data-target="rpFromDate" title="Clear">&times;</button>
-        </div>
-      </div>
-
-      <div class="rp-field" id="fld-to-date">
-        <label for="rpToDate">To Date</label>
-        <div class="rp-input-row">
-          <input type="date" id="rpToDate">
-          <button type="button" class="rp-clear-one" data-target="rpToDate" title="Clear">&times;</button>
-        </div>
-      </div>
-
+    <h3 class="fx-title">
+      Loading Invoices
+      <span class="fx-dots"><i></i><i></i><i></i></span>
+    </h3>
+    <p class="fx-status"><span id="fxStatus">Initializing secure connection...</span></p>
+    <div class="fx-track">
+      <div id="fxBarFill" class="fx-fill"></div>
     </div>
-
-    <div class="rp-filters-actions">
-      <button class="rp-btn rp-btn-ghost" id="rpResetAll">Reset All</button>
-      <button class="rp-btn rp-btn-primary" id="rpApply">Apply Filter</button>
-    </div>
-  </div>
-
-  <!-- ===================== TABLE TOOLBAR ===================== -->
-<div style="margin-left: 20px; margin-right: 20px;">
-  <div class="rp-toolbar">
-    <div class="rp-count"></div>
-    <div class="rp-export-group">
-      <div class="rp-count" id="rpCount" style="display: none;">Loading records…</div>
-      <button class="rp-btn rp-btn-outline" id="rpExportExcel">⬇ Export to Excel</button>
-      <button class="rp-btn rp-btn-outline" id="rpExportPdf">⬇ Export to PDF</button>
-    </div>
-  </div>
-
-  <!-- ===================== TABLE ===================== -->
-  <div class="rp-table-card">
-    <div class="rp-table-scroll">
-      <table class="rp-table" id="rpTable">
-        <thead>
-          <tr>
-            <th><input type="checkbox" id="rpSelectAll" title="Select all visible claims"></th>
-            <th>Payment ID</th>
-            <th>Payment Date</th>
-            <th>Payment Method</th>
-            <th>Doctor</th>
-            <th>Hospital</th>
-            <th>Patient</th>
-            <th>Date of Service</th>
-            <th>Item Code</th>
-            <th>Paid Amount</th>
-            <th>Adjustment Amount</th>
-            <th>Balance Due</th>
-          </tr>
-        </thead>
-        <tbody id="rpTbody">
-          <tr><td colspan="12"><div class="rp-loading"><span class="rp-spinner"></span>Fetching Add_Payment_Report…</div></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="rp-count" id="rpFilteredCount" style="margin-top:10px; display:none;" >Showing 0 of 0 payments</div>
-
-  <!-- ===================== GRAND SUMMARY CARD ===================== -->
-  <div style="margin-top: 16px;">
-    <div class="rp-grand-summary-card" id="rpGrandSummaryCard">
-      <div class="rp-grand-summary-title">Grand Summary</div>
-      <div class="rp-grand-summary-grid">
-        <div class="rp-grand-summary-item">
-          <span class="rp-gs-label">Payments</span>
-          <span class="rp-gs-value" id="rpGsPayments">0</span>
-        </div>
-        <div class="rp-grand-summary-item">
-          <span class="rp-gs-label">Doctors</span>
-          <span class="rp-gs-value" id="rpGsDoctors">0</span>
-        </div>
-        <div class="rp-grand-summary-item">
-          <span class="rp-gs-label">Hospitals</span>
-          <span class="rp-gs-value" id="rpGsHospitals">0</span>
-        </div>
-        <div class="rp-grand-summary-item">
-          <span class="rp-gs-label">Paid Amount</span>
-          <span class="rp-gs-value rp-gs-amount" id="rpGsPaid">$0.00</span>
-        </div>
-        <div class="rp-grand-summary-item">
-          <span class="rp-gs-label">Adjustment Amount</span>
-          <span class="rp-gs-value rp-gs-amount" id="rpGsAdjustment">$0.00</span>
-        </div>
-        <div class="rp-grand-summary-item">
-          <span class="rp-gs-label">Balance Due</span>
-          <span class="rp-gs-value rp-gs-balance" id="rpGsBalance">$0.00</span>
-        </div>
-      </div>
+    <div class="fx-footer">
+      <span class="fx-badge">SYNCHRONIZING INVOICES</span>
+      <span id="fxPct" class="fx-percent">0%</span>
     </div>
   </div>
 </div>
+  <div class="container">
 
-</div>
+    <header class="report-header">
+      <div class="report-header-inner">
+        <div class="report-header-brand">
+          <img
+            src="https://creatorapp.zohopublic.com.au/file//medielves/claims-management//All_Images/31559000000025010/Logo/image-download/PFxHZm68ZwuMKfkZz7yNOH7BZEes8UQN5ETOHD0bVY8Njqf0b9Zw5ZTe2XUK0CONRVfdmbQ9wteQdDnbWNCN4kVaeRZQhFrE6Tp5?filepath=/1774517256590556_Logo_design_with_green_leaf_accent.png"
+            alt="Logo" class="report-logo">
+        </div>
+        <div class="report-header-title">
+          <span class="report-header-spacer"></span>
+          <h1>Settlements</h1>
+        </div>
+      </div>
+    </header>
+
+    <!-- FILTERS -->
+    <div class="filter-card">
+      <div class="filter-grid">
+
+        <div class="filter-group">
+          <label>Doctor</label>
+          <div id="f-doctor"></div>
+        </div>
+
+         <div class="filter-group">
+          <label>Status</label>
+          <div id="f-status"></div>
+        </div>
+
+        <div class="filter-group">
+          <label>From Date</label>
+          <input type="date" id="f-from" />
+        </div>
+
+        <div class="filter-group">
+          <label>To Date</label>
+          <input type="date" id="f-to" />
+        </div>
+
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-primary" onclick="runReport()">Update</button>
+        <button class="btn btn-reset" onclick="resetFilters()">Reset</button>
+
+        <div class="export-menu" id="export-menu">
+          <button class="export-icon-btn" id="export-icon-btn" title="Export report" type="button">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 16V4"></path>
+              <path d="M7 8l5-5 5 5"></path>
+              <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"></path>
+            </svg>
+          </button>
+          <div class="export-dropdown" id="export-dropdown">
+            <button type="button" class="export-option" id="export-pdf-opt">
+              <span class="export-option-icon pdf-icon">PDF</span>
+              <span>Export as PDF</span>
+            </button>
+            <button type="button" class="export-option" id="export-excel-opt">
+              <span class="export-option-icon excel-icon">XLS</span>
+              <span>Export as Excel</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-card">
+      <div class="table-scroll">
+        <table>
+          <colgroup>
+            <col style="width:22%">   <!-- Doctor -->
+            <col style="width:14%">   <!-- Invoice No -->
+            <col style="width:12%">   <!-- Invoice Date -->
+            <col style="width:13%">   <!-- Invoice Amount -->
+            <col style="width:13%">   <!-- Amount Paid -->
+            <col style="width:14%">   <!-- Outstanding Balance -->
+            <col style="width:12%">   <!-- Payment Status -->
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Doctor</th>
+              <th>Invoice No</th>
+              <th class="col-center">Invoice Date</th>
+              <th class="col-money">Invoice Amount</th>
+              <th class="col-money">Amount Paid</th>
+              <th class="col-money">Outstanding Balance</th>
+              <th class="col-center">Payment Status</th>
+            </tr>
+          </thead>
+          <tbody id="report-body">
+            <tr>
+              <td colspan="7">No data</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GRAND SUMMARY CARD -->
+    <div class="summary-card" id="grand-summary-card">
+      <div class="summary-header">
+        <h3 class="summary-title">Grand Summary</h3>
+      </div>
+      <div class="summary-grid">
+        <div class="summary-stat">
+          <div class="label">Total Invoices</div>
+          <div class="value" id="sum-invoices">0</div>
+        </div>
+        <div class="summary-stat">
+          <div class="label">Total Invoice Amount</div>
+          <div class="value" id="sum-amount">$ 0.00</div>
+        </div>
+        <div class="summary-stat">
+          <div class="label">Total Amount Paid</div>
+          <div class="value" id="sum-paid">$ 0.00</div>
+        </div>
+        <div class="summary-stat">
+          <div class="label">Total Outstanding Balance</div>
+          <div class="value" id="sum-balance">$ 0.00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MOBILE EXPORT MODAL -->
+  <div id="export-modal" class="me-modal-overlay" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="me-modal-card">
+      <div class="me-modal-header">
+        <div class="me-modal-title-wrap">
+          <div id="modal-file-icon" class="export-option-icon pdf-icon">PDF</div>
+          <div>
+            <h3 class="me-modal-title">Report Ready</h3>
+            <p class="me-modal-subtitle">Download or save to your mobile device</p>
+          </div>
+        </div>
+        <button type="button" class="me-modal-close" id="modal-close-btn" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div class="me-modal-body">
+        <div class="me-file-card">
+          <div class="me-file-name" id="modal-file-name">Medi Elves Settlement Invoice Outstanding Report.pdf</div>
+          <div class="me-file-meta">
+            <span class="me-badge me-badge-size" id="modal-file-size">0 KB</span>
+            <span class="me-badge me-badge-success">✓ Saved in Local Storage</span>
+          </div>
+          <div class="me-storage-hint">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            <span>Storage Path: <code id="modal-storage-path">localStorage &bull; IndexedDB</code></span>
+          </div>
+        </div>
+
+        <div class="me-action-list">
+          <!-- Direct Download Link -->
+          <a class="me-action-btn me-btn-download" id="modal-download-btn" href="#" download="" target="_blank">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <div class="me-action-text">
+              <strong>Download File Directly</strong>
+              <small>Tap to download report to your device</small>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <div class="me-modal-footer">
+        <button type="button" class="btn btn-reset" id="modal-done-btn">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="me-toast" class="me-toast" role="status" aria-live="polite"></div>
+
+  <script src="./logo.js"></script>
+  <script src="./script.js"></script>
 </body>
-<script src="./script.js"></script>
-</body>
+
 </html>
