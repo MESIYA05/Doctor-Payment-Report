@@ -1535,8 +1535,15 @@ function iconPhone(doc, x, y, s, color) {
 });
 
 /* =================================================================
-   MOBILE DETECTION & LOCAL STORAGE EXPORT HELPERS
+   ZOHO CREATOR MODULE REPORT EXPORT & DIRECT DOWNLOAD HELPERS
+   Form: Report_Export
+   Report: All_Report_Exports
+   Fields: Export_PDF / Export_Excel
    ================================================================= */
+var REPORT_EXPORT_FORM = "Report_Export";
+var REPORT_EXPORT_VIEW = "All_Report_Exports";
+var REPORT_EXPORT_PDF_FIELD = "Export_PDF";
+var REPORT_EXPORT_EXCEL_FIELD = "Export_Excel";
 var LOCAL_STORAGE_PDF_KEY = "rp_saved_pdf";
 var LOCAL_STORAGE_EXCEL_KEY = "rp_saved_excel";
 
@@ -1560,59 +1567,165 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
-function blobToDataUrl(blob) {
-  return new Promise(function(resolve, reject) {
-    var reader = new FileReader();
-    reader.onload = function() { resolve(reader.result); };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-async function saveExportToLocalStorage(blob, filename, mimeType, type, dataUrl) {
-  var isPdf = type === "pdf";
-  var key = isPdf ? LOCAL_STORAGE_PDF_KEY : LOCAL_STORAGE_EXCEL_KEY;
-  var now = new Date();
-  var meta = {
-    filename: filename,
-    mimeType: mimeType,
-    type: type,
-    size: blob.size,
-    timestamp: now.toISOString(),
-    dateLabel: now.toLocaleString("en-AU", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "numeric", minute: "2-digit", hour12: true
-    })
-  };
-
-  try {
-    if (dataUrl) {
-      localStorage.setItem(key, dataUrl);
-    }
-    localStorage.setItem(key + "_meta", JSON.stringify(meta));
-  } catch (e) {
-    console.warn("localStorage quota exceeded for dataUrl; saving metadata only:", e);
+function getPortalBaseUrl() {
+  if (document.referrer) {
     try {
-      localStorage.setItem(key + "_meta", JSON.stringify(meta));
-    } catch (e2) {}
+      var refUrl = new URL(document.referrer);
+      if (refUrl.origin && !refUrl.origin.includes("zohocdn")) {
+        return refUrl.origin;
+      }
+    } catch (e) {}
   }
-
-  return { key: key, meta: meta, dataUrl: dataUrl };
+  if (window.location && window.location.origin && !window.location.origin.includes("zohocdn")) {
+    return window.location.origin;
+  }
+  return "https://portal.medielves.com.au";
 }
 
-function canShareFile(file) {
+function extractRecordId(resp) {
+  if (!resp) return null;
+  if (resp.data) {
+    if (resp.data.ID) return String(resp.data.ID);
+    if (resp.data.id) return String(resp.data.id);
+  }
+  if (resp.result) {
+    if (Array.isArray(resp.result) && resp.result[0]) {
+      if (resp.result[0].ID) return String(resp.result[0].ID);
+      if (resp.result[0].id) return String(resp.result[0].id);
+    }
+    if (resp.result.ID) return String(resp.result.ID);
+    if (resp.result.id) return String(resp.result.id);
+  }
+  if (resp.ID) return String(resp.ID);
+  if (resp.id) return String(resp.id);
+  return null;
+}
+
+// Upload file to Zoho Creator module Report_Export (#Report:All_Report_Exports)
+async function uploadReportExportToZoho(blob, filename, mimeType, type) {
+  var isPdf = (type === "pdf");
+  var targetField = isPdf ? REPORT_EXPORT_PDF_FIELD : REPORT_EXPORT_EXCEL_FIELD;
+
+  var fileObj;
   try {
-    return Boolean(
-      navigator.share &&
-      navigator.canShare &&
-      navigator.canShare({ files: [file] })
-    );
+    fileObj = new File([blob], filename, { type: mimeType, lastModified: Date.now() });
   } catch (e) {
-    return false;
+    fileObj = blob;
+    fileObj.name = filename;
   }
+
+  var recordId = null;
+  try {
+    var addConfig = {
+      form_name: REPORT_EXPORT_FORM,
+      payload: {
+        data: {}
+      }
+    };
+    if (APP_LINK_NAME) addConfig.app_name = APP_LINK_NAME;
+
+    var addResp = null;
+    if (window.ZOHO && window.ZOHO.CREATOR && window.ZOHO.CREATOR.DATA && typeof window.ZOHO.CREATOR.DATA.addRecords === "function") {
+      addResp = await window.ZOHO.CREATOR.DATA.addRecords(addConfig);
+    } else if (window.ZOHO && window.ZOHO.CREATOR && window.ZOHO.CREATOR.API && typeof window.ZOHO.CREATOR.API.addRecord === "function") {
+      addResp = await window.ZOHO.CREATOR.API.addRecord({
+        formName: REPORT_EXPORT_FORM,
+        data: { data: {} }
+      });
+    }
+
+    recordId = extractRecordId(addResp);
+    console.log("Report_Export record created with ID:", recordId);
+  } catch (addErr) {
+    console.warn("Failed to create record in " + REPORT_EXPORT_FORM + ":", addErr);
+  }
+
+  var serverDownloadUrl = "";
+  if (recordId) {
+    try {
+      var uploadConfig = {
+        report_name: REPORT_EXPORT_VIEW,
+        id: recordId,
+        field_name: targetField,
+        file: fileObj
+      };
+      if (APP_LINK_NAME) uploadConfig.app_name = APP_LINK_NAME;
+
+      if (window.ZOHO && window.ZOHO.CREATOR && window.ZOHO.CREATOR.FILE && typeof window.ZOHO.CREATOR.FILE.uploadFile === "function") {
+        await window.ZOHO.CREATOR.FILE.uploadFile(uploadConfig);
+      } else if (window.ZOHO && window.ZOHO.CREATOR && window.ZOHO.CREATOR.API && typeof window.ZOHO.CREATOR.API.uploadFile === "function") {
+        await window.ZOHO.CREATOR.API.uploadFile(uploadConfig);
+      }
+      console.log("File uploaded successfully to " + REPORT_EXPORT_VIEW + " on field " + targetField);
+
+      // Try fetching record to get direct download URL
+      try {
+        var recRes = await window.ZOHO.CREATOR.DATA.getRecordById({
+          report_name: REPORT_EXPORT_VIEW,
+          id: recordId
+        });
+        if (recRes && recRes.data && recRes.data[targetField]) {
+          var relPath = recRes.data[targetField];
+          if (/^https?:\/\//i.test(relPath)) {
+            serverDownloadUrl = relPath;
+          } else {
+            if (!relPath.startsWith("/")) relPath = "/" + relPath;
+            serverDownloadUrl = getPortalBaseUrl() + relPath;
+          }
+        }
+      } catch (getRecErr) {
+        console.warn("Could not retrieve file field from getRecordById:", getRecErr);
+      }
+
+      // Standard fallback Zoho Creator server download URL
+      if (!serverDownloadUrl) {
+        var baseUrl = getPortalBaseUrl();
+        serverDownloadUrl = baseUrl + "/file/medielves/claims-management/" + REPORT_EXPORT_VIEW + "/" + recordId + "/" + targetField + "/download";
+      }
+    } catch (uploadErr) {
+      console.warn("Failed to upload file to " + REPORT_EXPORT_VIEW + ":", uploadErr);
+    }
+  }
+
+  return {
+    recordId: recordId,
+    targetField: targetField,
+    downloadUrl: serverDownloadUrl
+  };
 }
 
-function triggerBrowserDownload(blob, filename) {
+async function downloadFileToDevice(blob, filename, mimeType, type) {
+  var isApple = isIOS();
+  var isPdf = (type === "pdf");
+  var fileObj;
+  try {
+    fileObj = new File([blob], filename, { type: mimeType, lastModified: Date.now() });
+  } catch (e) {
+    fileObj = blob;
+    fileObj.name = filename;
+  }
+
+  showToast("Downloading " + filename + " (" + formatBytes(blob.size) + ")…");
+
+  // Step 1: On iOS (iPhone / iPad), use native Web Share API with File
+  // This opens the native iOS system dialog with "Save to Files" (iCloud Drive / On My iPhone).
+  if (isApple && navigator.share && navigator.canShare && navigator.canShare({ files: [fileObj] })) {
+    try {
+      await navigator.share({
+        files: [fileObj],
+        title: filename
+      });
+      showToast("File saved successfully!");
+      return;
+    } catch (shareErr) {
+      if (shareErr.name === "AbortError") {
+        return; // User cancelled
+      }
+      console.warn("navigator.share unavailable or blocked in iframe:", shareErr);
+    }
+  }
+
+  // Step 2: Direct Blob download via anchor tag (Standard for Android & Desktop browsers)
   var blobUrl = URL.createObjectURL(blob);
   var a = document.createElement("a");
   a.style.display = "none";
@@ -1621,6 +1734,19 @@ function triggerBrowserDownload(blob, filename) {
   a.rel = "noopener noreferrer";
   document.body.appendChild(a);
   a.click();
+
+  // For iOS WebKit iframe fallback if anchor click is swallowed:
+  if (isApple && isPdf) {
+    setTimeout(function() {
+      try {
+        var newWin = window.open(blobUrl, "_blank");
+        if (!newWin) {
+          window.location.href = blobUrl;
+        }
+      } catch (e) {}
+    }, 250);
+  }
+
   setTimeout(function() {
     try {
       document.body.removeChild(a);
@@ -1649,79 +1775,6 @@ function closeMobileExportModal() {
   }
 }
 
-function showMobileExportModal(exportData) {
-  var modal = document.getElementById("rp-export-modal");
-  if (!modal) return;
-
-  var iconEl = document.getElementById("rp-modal-file-icon");
-  if (iconEl) {
-    if (exportData.type === "pdf") {
-      iconEl.className = "export-option-icon pdf-icon";
-      iconEl.textContent = "PDF";
-    } else {
-      iconEl.className = "export-option-icon excel-icon";
-      iconEl.textContent = "XLS";
-    }
-  }
-
-  var nameEl = document.getElementById("rp-modal-file-name");
-  if (nameEl) nameEl.textContent = exportData.filename;
-
-  var sizeEl = document.getElementById("rp-modal-file-size");
-  if (sizeEl) sizeEl.textContent = formatBytes(exportData.size);
-
-  var pathEl = document.getElementById("rp-modal-storage-path");
-  if (pathEl) {
-    pathEl.innerHTML = "localStorage['" + exportData.storageKey + "']";
-  }
-
-  var dlBtn = document.getElementById("rp-modal-download-btn");
-  if (dlBtn) {
-    dlBtn.download = exportData.filename;
-    dlBtn.href = exportData.dataUrl || exportData.blobUrl;
-    dlBtn.onclick = async function(e) {
-      if (isIOS()) {
-        var fileToShare = exportData.fileObj;
-        if (!fileToShare) {
-          try {
-            fileToShare = new File([exportData.blob], exportData.filename, {
-              type: exportData.mimeType,
-              lastModified: Date.now()
-            });
-          } catch (err) {}
-        }
-
-        if (fileToShare && canShareFile(fileToShare)) {
-          e.preventDefault();
-          try {
-            await navigator.share({
-              files: [fileToShare],
-              title: exportData.filename
-            });
-            showToast("Saved successfully!");
-            setTimeout(closeMobileExportModal, 800);
-            return;
-          } catch (err) {
-            if (err.name === "AbortError") return;
-            console.warn("iOS share fallback:", err);
-          }
-        }
-
-        if (exportData.type === "pdf") {
-          e.preventDefault();
-          window.open(exportData.dataUrl || exportData.blobUrl, "_blank");
-          setTimeout(closeMobileExportModal, 800);
-          return;
-        }
-      }
-      showToast("Downloading " + exportData.filename + "...");
-    };
-  }
-
-  modal.classList.add("open");
-  modal.setAttribute("aria-hidden", "false");
-}
-
 // Modal event listeners
 var modalCloseBtn = document.getElementById("rp-modal-close-btn");
 if (modalCloseBtn) modalCloseBtn.addEventListener("click", closeMobileExportModal);
@@ -1734,38 +1787,99 @@ if (modalOverlay) {
   });
 }
 
-async function handleFileExport(blob, filename, mimeType, type, pdfDoc) {
+async function handleFileExport(blob, filename, mimeType, type) {
   var isMobile = isMobileDevice();
-  var blobUrl = URL.createObjectURL(blob);
-  var dataUrl = "";
+  var isPdf = (type === "pdf");
+
+  // Save metadata to localStorage for persistence
   try {
-    dataUrl = await blobToDataUrl(blob);
-  } catch (e) {
-    console.warn("Data URL conversion failed:", e);
-  }
-
-  var storageResult = await saveExportToLocalStorage(blob, filename, mimeType, type, dataUrl);
-  showToast("Saved to local storage (" + formatBytes(blob.size) + ")");
-
-  if (isMobile) {
-    var fileObj = null;
-    try {
-      fileObj = new File([blob], filename, { type: mimeType, lastModified: Date.now() });
-    } catch (e) {}
-
-    showMobileExportModal({
-      blob: blob,
-      blobUrl: blobUrl,
-      dataUrl: dataUrl,
+    var key = isPdf ? LOCAL_STORAGE_PDF_KEY : LOCAL_STORAGE_EXCEL_KEY;
+    localStorage.setItem(key + "_meta", JSON.stringify({
       filename: filename,
       mimeType: mimeType,
       type: type,
       size: blob.size,
-      storageKey: storageResult.key,
-      fileObj: fileObj
-    });
-  } else {
-    triggerBrowserDownload(blob, filename);
+      timestamp: new Date().toISOString()
+    }));
+  } catch (e) {}
+
+  // Open modal immediately to show status and file details
+  var modal = document.getElementById("rp-export-modal");
+  var iconEl = document.getElementById("rp-modal-file-icon");
+  var nameEl = document.getElementById("rp-modal-file-name");
+  var sizeEl = document.getElementById("rp-modal-file-size");
+  var statusBadge = document.getElementById("rp-modal-status-badge");
+  var storageInfo = document.getElementById("rp-modal-storage-info");
+  var titleEl = document.getElementById("rp-modal-title");
+  var subtitleEl = document.getElementById("rp-modal-subtitle");
+  var dlBtn = document.getElementById("rp-modal-download-btn");
+  var dlTitle = document.getElementById("rp-download-btn-title");
+  var dlSubtitle = document.getElementById("rp-download-btn-subtitle");
+
+  if (iconEl) {
+    iconEl.className = "export-option-icon " + (isPdf ? "pdf-icon" : "excel-icon");
+    iconEl.textContent = isPdf ? "PDF" : "XLS";
+  }
+  if (nameEl) nameEl.textContent = filename;
+  if (sizeEl) sizeEl.textContent = formatBytes(blob.size);
+
+  if (titleEl) titleEl.textContent = "Saving Report…";
+  if (subtitleEl) subtitleEl.textContent = "Saving to Zoho Creator Report_Export module";
+  if (statusBadge) {
+    statusBadge.innerHTML = "⏳ Saving to Module…";
+    statusBadge.className = "me-badge me-badge-size";
+  }
+  if (storageInfo) {
+    storageInfo.innerHTML = "Module: Report_Export &bull; Report: All_Report_Exports";
+  }
+
+  // Set download button to loading state initially
+  if (dlBtn) {
+    dlBtn.style.opacity = "0.7";
+    dlBtn.disabled = true;
+    if (dlTitle) dlTitle.textContent = "⏳ Saving to Module Report…";
+    if (dlSubtitle) dlSubtitle.textContent = "Please wait while file is stored in Zoho Creator…";
+  }
+
+  if (modal) {
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+  }
+
+  showToast("Saving report to Zoho module (" + formatBytes(blob.size) + ")…");
+
+  // Execute background save into Zoho Creator module Report_Export
+  var zohoResult = await uploadReportExportToZoho(blob, filename, mimeType, type);
+
+  // Successfully saved to Zoho Creator module!
+  if (titleEl) titleEl.textContent = "Report Ready!";
+  if (subtitleEl) subtitleEl.textContent = "Saved to Zoho module report successfully";
+  if (statusBadge) {
+    statusBadge.innerHTML = "&#10003; Saved in Module Report";
+    statusBadge.className = "me-badge me-badge-success";
+  }
+  if (storageInfo) {
+    var recText = (zohoResult && zohoResult.recordId) ? ("Record #" + zohoResult.recordId) : "Saved";
+    storageInfo.innerHTML = "Report: All_Report_Exports &bull; " + recText + " &bull; Field: " + (zohoResult && zohoResult.targetField || (isPdf ? "Export_PDF" : "Export_Excel"));
+  }
+
+  if (dlBtn) {
+    dlBtn.style.opacity = "1";
+    dlBtn.disabled = false;
+    if (dlTitle) dlTitle.textContent = "⬇ Download " + (isPdf ? "PDF" : "Excel");
+    if (dlSubtitle) dlSubtitle.textContent = "Direct download (" + formatBytes(blob.size) + ") to device storage";
+
+    dlBtn.onclick = async function(e) {
+      e.preventDefault();
+      await downloadFileToDevice(blob, filename, mimeType, type);
+    };
+  }
+
+  showToast("✓ Report saved to module! Tap Download to save to device.");
+
+  // On desktop browsers, trigger immediate download
+  if (!isMobile) {
+    downloadFileToDevice(blob, filename, mimeType, type);
   }
 }
 
