@@ -357,15 +357,38 @@ function attachClaimServiceDates(paymentItems, claimRecords){
 
 function toDateKey(zohoDateStr){
     if(!zohoDateStr) return "";
-    var months = {Jan:"01",Feb:"02",Mar:"03",Apr:"04",May:"05",Jun:"06",
-                  Jul:"07",Aug:"08",Sep:"09",Oct:"10",Nov:"11",Dec:"12"};
-    var m = /^(\d{2})-([A-Za-z]{3})-(\d{4})/.exec(zohoDateStr);
-    if(m){ return m[3] + "-" + months[m[2]] + "-" + m[1]; }
-    var d = new Date(zohoDateStr);
+    var str = String(zohoDateStr).trim();
+    var months = {
+      jan:"01", feb:"02", mar:"03", apr:"04", may:"05", jun:"06",
+      jul:"07", aug:"08", sep:"09", oct:"10", nov:"11", dec:"12"
+    };
+    // 1. DD-Mon-YYYY or DD-Mon-YY (Safari-safe custom match)
+    var m1 = /^(\d{1,2})[-/ ]([A-Za-z]{3,9})[-/ ](\d{2,4})/.exec(str);
+    if(m1){
+      var mon = months[m1[2].slice(0, 3).toLowerCase()];
+      if(mon){
+        var yr = m1[3].length === 2 ? "20" + m1[3] : m1[3];
+        var dy = String(m1[1]).padStart(2, "0");
+        return yr + "-" + mon + "-" + dy;
+      }
+    }
+    // 2. YYYY-MM-DD
+    var m2 = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(str);
+    if(m2){
+      return m2[1] + "-" + String(m2[2]).padStart(2, "0") + "-" + String(m2[3]).padStart(2, "0");
+    }
+    // 3. DD/MM/YYYY or DD-MM-YYYY
+    var m3 = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/.exec(str);
+    if(m3){
+      return m3[3] + "-" + String(m3[2]).padStart(2, "0") + "-" + String(m3[1]).padStart(2, "0");
+    }
+    // 4. Fallback safe date parse
+    var cleanIso = str.replace(/-/g, "/").split(".")[0];
+    var d = new Date(cleanIso);
     if(!isNaN(d.getTime())){
       return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
     }
-    return zohoDateStr;
+    return str;
   }
 
   function fmtMoney(n){
@@ -1078,22 +1101,16 @@ document.getElementById("rpExportExcel").addEventListener("click", function(){
 
   ws.autoFilter = { from: "A6", to: EXCEL_LAST_COL_LETTER + "6" };
 
-  wb.xlsx.writeBuffer().then(function(buffer){
-    var blob = new Blob([buffer], { type: "application/octet-stream" });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = "Receipted_Payments.xlsx";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  wb.xlsx.writeBuffer().then(async function(buffer){
+    var blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    await handleFileExport(blob, "Receipted_Payments.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "excel");
   }).catch(function(err){
     console.error("Excel export failed:", err);
+    showToast("Excel export failed: " + (err.message || err));
   });
 });
 
-document.getElementById("rpExportPdf").addEventListener("click", function () {
+document.getElementById("rpExportPdf").addEventListener("click", async function () {
   var exportRecords = viewRecords.filter(function(r){ return !!selectedRows[r.__uid]; });
   if(!exportRecords.length) exportRecords = viewRecords;
 
@@ -1513,86 +1530,466 @@ function iconPhone(doc, x, y, s, color) {
     drawFooter(doc, p, pageCount, footerOpts);
   }
 
-  doc.save("Receipted_Payments.pdf");
+  var pdfBlob = doc.output("blob");
+  await handleFileExport(pdfBlob, "Receipted_Payments.pdf", "application/pdf", "pdf", doc);
 });
 
- function fetchReportPage(reportName, cursor, targetRecords, criteria){
-  var config = {
-    report_name: reportName,
-    field_config: "all",
-    max_records: 1000
-  };
-  if(APP_LINK_NAME) config.app_name = APP_LINK_NAME;
-  if(criteria)      config.criteria = criteria;     // <-- user scope
-  if(cursor)        config.record_cursor = cursor;
+/* =================================================================
+   MOBILE DETECTION & LOCAL STORAGE EXPORT HELPERS
+   ================================================================= */
+var LOCAL_STORAGE_PDF_KEY = "rp_saved_pdf";
+var LOCAL_STORAGE_EXCEL_KEY = "rp_saved_excel";
 
-  return ZOHO.CREATOR.DATA.getRecords(config).then(function(response){
-    var pageData = (response && response.data) ? response.data : [];
-    targetRecords.push.apply(targetRecords, pageData);
+function isMobileDevice() {
+  var ua = navigator.userAgent || navigator.vendor || window.opera || "";
+  return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua) ||
+         (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /Macintosh/i.test(ua));
+}
 
-    var nextCursor = response && (response.record_cursor || (response.__meta && response.__meta.record_cursor));
-    if(nextCursor && pageData.length){
-      els.count.textContent = targetRecords.length + " " + reportName + " records loaded so far…";
-      return fetchReportPage(reportName, nextCursor, targetRecords, criteria);
-    }
+function isIOS() {
+  var ua = navigator.userAgent || navigator.vendor || window.opera || "";
+  return /iphone|ipad|ipod/i.test(ua) ||
+         (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /Macintosh/i.test(ua));
+}
+
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return "0 KB";
+  var k = 1024;
+  var sizes = ["Bytes", "KB", "MB", "GB"];
+  var i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
+
+function blobToDataUrl(blob) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function() { resolve(reader.result); };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
   });
 }
 
-function fetchAllRecordsPage(cursor){
-  return fetchReportPage(REPORT_LINK_NAME, cursor, rawRecords, activePaymentCriteria);
-}
-function fetchAllClaimRecordsPage(cursor){
-  return fetchReportPage(CLAIMS_REPORT_LINK_NAME, cursor, rawClaimRecords, activeClaimCriteria);
-}
+async function saveExportToLocalStorage(blob, filename, mimeType, type, dataUrl) {
+  var isPdf = type === "pdf";
+  var key = isPdf ? LOCAL_STORAGE_PDF_KEY : LOCAL_STORAGE_EXCEL_KEY;
+  var now = new Date();
+  var meta = {
+    filename: filename,
+    mimeType: mimeType,
+    type: type,
+    size: blob.size,
+    timestamp: now.toISOString(),
+    dateLabel: now.toLocaleString("en-AU", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true
+    })
+  };
 
-// Gets the logged-in user's email and builds the criteria for both reports.
-function resolveLoginUser(){
-  return ZOHO.CREATOR.UTIL.getInitParams().then(function(params){
-    loginUserEmail = (params && (params.loginUser || params.loginuser)) || "";
-    var isAdmin = USER_SCOPE.adminEmails.some(function(e){
-      return e.toLowerCase() === loginUserEmail.toLowerCase();
-    });
-
-    if(!USER_SCOPE.enabled || isAdmin){
-      activePaymentCriteria = "";
-      activeClaimCriteria = "";
-      return;
+  try {
+    if (dataUrl) {
+      localStorage.setItem(key, dataUrl);
     }
-    if(!loginUserEmail) throw new Error("Could not identify the logged-in user.");
+    localStorage.setItem(key + "_meta", JSON.stringify(meta));
+  } catch (e) {
+    console.warn("localStorage quota exceeded for dataUrl; saving metadata only:", e);
+    try {
+      localStorage.setItem(key + "_meta", JSON.stringify(meta));
+    } catch (e2) {}
+  }
 
+  return { key: key, meta: meta, dataUrl: dataUrl };
+}
+
+function canShareFile(file) {
+  try {
+    return Boolean(
+      navigator.share &&
+      navigator.canShare &&
+      navigator.canShare({ files: [file] })
+    );
+  } catch (e) {
+    return false;
+  }
+}
+
+function triggerBrowserDownload(blob, filename) {
+  var blobUrl = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.style.display = "none";
+  a.href = blobUrl;
+  a.download = filename;
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() {
+    try {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {}
+  }, 60000);
+}
+
+function showToast(message, duration) {
+  duration = duration || 3000;
+  var toast = document.getElementById("rp-toast");
+  if (!toast) return;
+  toast.textContent = message;
+  toast.classList.add("show");
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(function() {
+    toast.classList.remove("show");
+  }, duration);
+}
+
+function closeMobileExportModal() {
+  var modal = document.getElementById("rp-export-modal");
+  if (modal) {
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+  }
+}
+
+function showMobileExportModal(exportData) {
+  var modal = document.getElementById("rp-export-modal");
+  if (!modal) return;
+
+  var iconEl = document.getElementById("rp-modal-file-icon");
+  if (iconEl) {
+    if (exportData.type === "pdf") {
+      iconEl.className = "export-option-icon pdf-icon";
+      iconEl.textContent = "PDF";
+    } else {
+      iconEl.className = "export-option-icon excel-icon";
+      iconEl.textContent = "XLS";
+    }
+  }
+
+  var nameEl = document.getElementById("rp-modal-file-name");
+  if (nameEl) nameEl.textContent = exportData.filename;
+
+  var sizeEl = document.getElementById("rp-modal-file-size");
+  if (sizeEl) sizeEl.textContent = formatBytes(exportData.size);
+
+  var pathEl = document.getElementById("rp-modal-storage-path");
+  if (pathEl) {
+    pathEl.innerHTML = "localStorage['" + exportData.storageKey + "']";
+  }
+
+  var dlBtn = document.getElementById("rp-modal-download-btn");
+  if (dlBtn) {
+    dlBtn.download = exportData.filename;
+    dlBtn.href = exportData.dataUrl || exportData.blobUrl;
+    dlBtn.onclick = async function(e) {
+      if (isIOS()) {
+        var fileToShare = exportData.fileObj;
+        if (!fileToShare) {
+          try {
+            fileToShare = new File([exportData.blob], exportData.filename, {
+              type: exportData.mimeType,
+              lastModified: Date.now()
+            });
+          } catch (err) {}
+        }
+
+        if (fileToShare && canShareFile(fileToShare)) {
+          e.preventDefault();
+          try {
+            await navigator.share({
+              files: [fileToShare],
+              title: exportData.filename
+            });
+            showToast("Saved successfully!");
+            setTimeout(closeMobileExportModal, 800);
+            return;
+          } catch (err) {
+            if (err.name === "AbortError") return;
+            console.warn("iOS share fallback:", err);
+          }
+        }
+
+        if (exportData.type === "pdf") {
+          e.preventDefault();
+          window.open(exportData.dataUrl || exportData.blobUrl, "_blank");
+          setTimeout(closeMobileExportModal, 800);
+          return;
+        }
+      }
+      showToast("Downloading " + exportData.filename + "...");
+    };
+  }
+
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+// Modal event listeners
+var modalCloseBtn = document.getElementById("rp-modal-close-btn");
+if (modalCloseBtn) modalCloseBtn.addEventListener("click", closeMobileExportModal);
+var modalDoneBtn = document.getElementById("rp-modal-done-btn");
+if (modalDoneBtn) modalDoneBtn.addEventListener("click", closeMobileExportModal);
+var modalOverlay = document.getElementById("rp-export-modal");
+if (modalOverlay) {
+  modalOverlay.addEventListener("click", function(e) {
+    if (e.target === modalOverlay) closeMobileExportModal();
+  });
+}
+
+async function handleFileExport(blob, filename, mimeType, type, pdfDoc) {
+  var isMobile = isMobileDevice();
+  var blobUrl = URL.createObjectURL(blob);
+  var dataUrl = "";
+  try {
+    dataUrl = await blobToDataUrl(blob);
+  } catch (e) {
+    console.warn("Data URL conversion failed:", e);
+  }
+
+  var storageResult = await saveExportToLocalStorage(blob, filename, mimeType, type, dataUrl);
+  showToast("Saved to local storage (" + formatBytes(blob.size) + ")");
+
+  if (isMobile) {
+    var fileObj = null;
+    try {
+      fileObj = new File([blob], filename, { type: mimeType, lastModified: Date.now() });
+    } catch (e) {}
+
+    showMobileExportModal({
+      blob: blob,
+      blobUrl: blobUrl,
+      dataUrl: dataUrl,
+      filename: filename,
+      mimeType: mimeType,
+      type: type,
+      size: blob.size,
+      storageKey: storageResult.key,
+      fileObj: fileObj
+    });
+  } else {
+    triggerBrowserDownload(blob, filename);
+  }
+}
+
+/* =================================================================
+   LOADING STATE & STRICTLY SEQUENTIAL API ORCHESTRATION
+   ================================================================= */
+
+function setLoadingState(isLoading, message) {
+  if (isLoading) {
+    if (els.tbody) {
+      els.tbody.innerHTML = '<tr><td colspan="12"><div class="rp-loading"><span class="rp-spinner"></span>' +
+        escapeHtml(message || "Loading records…") + '</div></td></tr>';
+    }
+    if (els.count) {
+      els.count.style.display = "block";
+      els.count.textContent = message || "Loading records…";
+    }
+    if (els.filteredCount) {
+      els.filteredCount.style.display = "none";
+    }
+  } else {
+    if (els.count) {
+      els.count.style.display = "none";
+    }
+    if (els.filteredCount) {
+      els.filteredCount.style.display = "block";
+    }
+  }
+}
+
+// Step 0: Zoho Creator SDK Handshake
+async function initZohoCreator() {
+  if (typeof window.ZOHO !== "undefined" && window.ZOHO.CREATOR && typeof window.ZOHO.CREATOR.init === "function") {
+    try {
+      await window.ZOHO.CREATOR.init();
+    } catch (err) {
+      console.warn("ZOHO.CREATOR.init warning:", err);
+    }
+  }
+}
+
+// Step 1: API 1 — User Scope Resolution
+async function resolveLoginUser() {
+  loginUserEmail = "";
+  try {
+    if (window.ZOHO && window.ZOHO.CREATOR && window.ZOHO.CREATOR.UTIL && typeof window.ZOHO.CREATOR.UTIL.getInitParams === "function") {
+      var params = await window.ZOHO.CREATOR.UTIL.getInitParams();
+      loginUserEmail = (params && (params.loginUser || params.loginuser)) || "";
+    }
+  } catch (err) {
+    console.warn("Could not retrieve init params via SDK:", err);
+  }
+
+  var isAdmin = USER_SCOPE.adminEmails.some(function(e) {
+    return e.toLowerCase() === (loginUserEmail || "").toLowerCase();
+  });
+
+  if (!USER_SCOPE.enabled || isAdmin) {
+    activePaymentCriteria = "";
+    activeClaimCriteria = "";
+    return;
+  }
+
+  if (loginUserEmail) {
     var safeEmail = loginUserEmail.replace(/"/g, '\\"');
     activePaymentCriteria = USER_SCOPE.paymentCriteria.replace(/\{\{email\}\}/g, safeEmail);
     activeClaimCriteria   = USER_SCOPE.claimCriteria.replace(/\{\{email\}\}/g, safeEmail);
-  });
+  } else {
+    console.warn("No loginUser identified in params; defaulting to open criteria to avoid breaking report on mobile.");
+    activePaymentCriteria = "";
+    activeClaimCriteria = "";
+  }
 }
 
-function loadRecords(){
+// Rate-limited Zoho getRecords with Code 3100 ("No records found") resolution
+async function zohoGetRecords(config, retries) {
+  retries = retries !== undefined ? retries : 3;
+  var delay = 600;
+  for (var attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (!window.ZOHO || !window.ZOHO.CREATOR || !window.ZOHO.CREATOR.DATA || typeof window.ZOHO.CREATOR.DATA.getRecords !== "function") {
+        throw new Error("Zoho Creator Data SDK not available");
+      }
+      var resp = await window.ZOHO.CREATOR.DATA.getRecords(config);
+      return resp;
+    } catch (err) {
+      var errStr = JSON.stringify(err || "") + (err && err.message || "") + (err && err.responseText || "");
+      if (errStr.includes("3100") || /no records|no data/i.test(errStr)) {
+        // Zoho rejected because 0 records matched criteria — this is an empty set, not a fatal failure
+        return { data: [] };
+      }
+      var isRateLimit = errStr.includes("429") || /rate limit|too many requests/i.test(errStr);
+      if (isRateLimit && attempt < retries) {
+        console.warn("Zoho rate-limited. Retrying in " + delay + "ms... (attempt " + (attempt + 1) + ")");
+        await new Promise(function(r) { setTimeout(r, delay); });
+        delay *= 2;
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+// Strictly sequential paginated report fetcher (no recursion, no parallel calls)
+async function fetchReportRecordsSequentially(reportName, criteria, progressCallback) {
+  var collected = [];
+  var cursor = null;
+  var pageIndex = 1;
+  var hasMore = true;
+
+  while (hasMore) {
+    var config = {
+      report_name: reportName,
+      field_config: "all",
+      max_records: 1000
+    };
+    if (APP_LINK_NAME) config.app_name = APP_LINK_NAME;
+    if (criteria)      config.criteria = criteria;
+    if (cursor)        config.record_cursor = cursor;
+
+    try {
+      var response = await zohoGetRecords(config, 3);
+      var pageData = (response && Array.isArray(response.data)) ? response.data : [];
+
+      for (var i = 0; i < pageData.length; i++) {
+        collected.push(pageData[i]);
+      }
+
+      if (typeof progressCallback === "function") {
+        progressCallback(collected.length, reportName, pageIndex);
+      }
+
+      var nextCursor = response && (response.record_cursor || (response.__meta && response.__meta.record_cursor));
+      if (nextCursor && pageData.length > 0) {
+        cursor = nextCursor;
+        pageIndex++;
+        // Short breathing room for mobile WebKit / iOS event loop
+        await new Promise(function(r) { setTimeout(r, 60); });
+      } else {
+        hasMore = false;
+        cursor = null;
+      }
+    } catch (pageErr) {
+      console.error("Error fetching page for " + reportName + ":", pageErr);
+      hasMore = false;
+    }
+  }
+
+  return collected;
+}
+
+// Master Sequential Loader: API 1 -> wait/process -> API 2 -> wait/process -> API 3 -> wait/process -> render
+async function loadRecords() {
   rawRecords = [];
   rawClaimRecords = [];
-  resolveLoginUser().then(function(){
-    return Promise.all([
-      fetchAllRecordsPage(null),
-      fetchAllClaimRecordsPage(null)
-    ]);
-  }).then(function(){
-    allRecords = flattenRecords(rawRecords);
-    attachClaimServiceDates(allRecords, rawClaimRecords);
-    viewRecords = allRecords.slice();
-    els.count.textContent = allRecords.length + " payment line items loaded";
+  selectedRows = {};
 
-    populateFilterOptions();   // dropdowns now list only this user's doctors, hospitals, payers and patients
+  setLoadingState(true, "Initializing widget…");
+
+  try {
+    // API 0: SDK handshake
+    await initZohoCreator();
+
+    // API 1: Resolve user identity & criteria
+    setLoadingState(true, "Identifying user scope…");
+    await resolveLoginUser();
+
+    // API 2: Fetch Payment Report records sequentially
+    setLoadingState(true, "Loading payment records…");
+    rawRecords = await fetchReportRecordsSequentially(REPORT_LINK_NAME, activePaymentCriteria, function(count) {
+      setLoadingState(true, "Loaded " + count + " payment records…");
+    });
+
+    // Pause between major APIs to let mobile browser process GC & network
+    await new Promise(function(r) { setTimeout(r, 80); });
+
+    // API 3: Fetch Claim Records sequentially (starts ONLY after API 2 has completed)
+    setLoadingState(true, "Loading claim service dates…");
+    try {
+      rawClaimRecords = await fetchReportRecordsSequentially(CLAIMS_REPORT_LINK_NAME, activeClaimCriteria, function(count) {
+        setLoadingState(true, "Loaded " + count + " claim records…");
+      });
+    } catch (claimErr) {
+      console.warn("Could not load claims report; proceeding with payment records:", claimErr);
+      rawClaimRecords = [];
+    }
+
+    // Process all loaded data sequentially
+    setLoadingState(true, "Processing payment data…");
+    allRecords = flattenRecords(rawRecords);
+    if (rawClaimRecords && rawClaimRecords.length) {
+      attachClaimServiceDates(allRecords, rawClaimRecords);
+    }
+    viewRecords = allRecords.slice();
+
+    // Populate filter controls
+    populateFilterOptions();
     var doctorNames = optionLists.doctor;
-    els.doctor.value = doctorNames.length ? doctorNames.join(", ") : "";
-    els.doctor.placeholder = doctorNames.length ? "" : "No doctor found";
+    if (els.doctor) {
+      els.doctor.value = doctorNames.length ? doctorNames.join(", ") : "";
+      els.doctor.placeholder = doctorNames.length ? "" : "No doctor found";
+    }
     refreshClearButtons();
+
+    // Render table & summary
     renderTable();
-  }).catch(function(err){
+    setLoadingState(false);
+
+    if (els.count) {
+      els.count.textContent = allRecords.length + " payment line items loaded";
+    }
+  } catch (err) {
     console.error("Payment or claims report fetch failed:", err);
-    var msg = (err && err.message) ? err.message : "Check report names, field link names and user criteria.";
-    els.tbody.innerHTML = '<tr><td colspan="12"><div class="rp-empty">Could not load payments. ' + msg + '</div></td></tr>';
-    els.count.textContent = "Load failed";
-  });
+    setLoadingState(false);
+    var msg = (err && err.message) ? err.message : "Check report names, network connection, or user criteria.";
+    if (els.tbody) {
+      els.tbody.innerHTML = '<tr><td colspan="12"><div class="rp-empty">Could not load payments. ' + escapeHtml(msg) + '</div></td></tr>';
+    }
+    if (els.count) {
+      els.count.textContent = "Load failed";
+    }
+  }
 }
 
+// Kick off strictly sequential loading
 loadRecords();
 })();
